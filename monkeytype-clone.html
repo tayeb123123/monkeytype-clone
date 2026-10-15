@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MonkeyType Clone</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #232427;
+    color: #646669;
+    font-family: 'Courier New', monospace;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    user-select: none;
+  }
+
+  .container {
+    width: 90%;
+    max-width: 800px;
+    text-align: center;
+    padding: 40px 20px;
+  }
+
+  .top-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 30px;
+  }
+
+  .logo {
+    font-size: 1.6rem;
+    color: #e2b714;
+    font-weight: bold;
+    cursor: pointer;
+  }
+
+  .timer-display {
+    font-size: 2.5rem;
+    color: #f0db45;
+    font-weight: bold;
+    min-width: 80px;
+  }
+
+  .config-bar {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    margin-bottom: 30px;
+  }
+
+  .config-btn {
+    background: #2c2e31;
+    border: none;
+    color: #646669;
+    padding: 8px 18px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 0.9rem;
+    transition: all 0.2s;
+  }
+
+  .config-btn:hover { background: #35373b; color: #e2b714; }
+  .config-btn.active { background: #e2b714; color: #232427; font-weight: bold; }
+
+  .live-stats {
+    display: flex;
+    justify-content: center;
+    gap: 40px;
+    margin-bottom: 20px;
+    font-size: 1rem;
+  }
+
+  .stat-item span { color: #e2b714; font-weight: bold; }
+
+  .words-wrapper {
+    position: relative;
+    overflow: hidden;
+    height: 96px;
+    margin-bottom: 30px;
+    border-radius: 8px;
+  }
+
+  /* NO transition on transform — prevents caret desync on line wrap */
+  .words-container {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 6px 12px;
+    padding: 10px;
+  }
+
+  .word {
+    position: relative;
+    font-size: 1.4rem;
+    letter-spacing: 1px;
+    line-height: 1.6;
+  }
+
+  .word .char { transition: color 0.05s; }
+  .word .char.correct  { color: #f0db45; }
+  .word .char.incorrect{ color: #ca4754; text-decoration: underline; }
+  .word .char.pending  { color: #646669; }
+
+  .caret {
+    position: absolute;
+    width: 2px;
+    background: #e2b714;
+    animation: blink 1s infinite;
+    pointer-events: none;
+  }
+
+  @keyframes blink {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: 0; }
+  }
+
+  #hidden-input {
+    position: absolute;
+    opacity: 0;
+    top: -9999px;
+  }
+
+  .restart-hint {
+    font-size: 0.85rem;
+    color: #4e5052;
+    margin-bottom: 10px;
+  }
+
+  .restart-hint kbd {
+    background: #2c2e31;
+    padding: 2px 8px;
+    border-radius: 4px;
+    color: #646669;
+  }
+
+  .results-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(35, 36, 39, 0.92);
+    justify-content: center;
+    align-items: center;
+    z-index: 100;
+  }
+
+  .results-overlay.show { display: flex; }
+
+  .results-card {
+    background: #2c2e31;
+    border-radius: 16px;
+    padding: 50px 60px;
+    text-align: center;
+    animation: popIn 0.3s ease;
+  }
+
+  @keyframes popIn {
+    from { transform: scale(0.8); opacity: 0; }
+    to   { transform: scale(1);   opacity: 1; }
+  }
+
+  .results-title { font-size: 2rem; color: #e2b714; margin-bottom: 30px; }
+
+  .results-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 25px 60px;
+    text-align: left;
+  }
+
+  .result-stat .label { font-size: 0.8rem; color: #646669; text-transform: uppercase; }
+  .result-stat .value { font-size: 1.8rem; color: #f0db45; font-weight: bold; }
+
+  .restart-btn {
+    margin-top: 35px;
+    background: #e2b714;
+    border: none;
+    color: #232427;
+    padding: 12px 30px;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: bold;
+    cursor: pointer;
+    font-family: inherit;
+    transition: transform 0.15s;
+  }
+
+  .restart-btn:hover { transform: scale(1.05); }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <div class="top-bar">
+    <div class="logo" onclick="restart()">monkey<span style="color:#646669">type</span></div>
+    <div class="timer-display" id="timer">30</div>
+    <div style="width:120px"></div>
+  </div>
+
+  <div class="config-bar">
+    <button class="config-btn" data-time="15" onclick="setDuration(15)">15s</button>
+    <button class="config-btn active" data-time="30" onclick="setDuration(30)">30s</button>
+    <button class="config-btn" data-time="60" onclick="setDuration(60)">60s</button>
+  </div>
+
+  <div class="live-stats">
+    <div class="stat-item">wpm: <span id="live-wpm">0</span></div>
+    <div class="stat-item">acc: <span id="live-acc">100%</span></div>
+    <div class="stat-item">time: <span id="live-time">30</span></div>
+  </div>
+
+  <div class="words-wrapper" id="words-wrapper">
+    <div class="words-container" id="words"></div>
+    <div class="caret" id="caret"></div>
+  </div>
+
+  <p class="restart-hint"><kbd>tab</kbd>+<kbd>enter</kbd> restart &nbsp;|&nbsp; <kbd>backspace</kbd> fix mistakes</p>
+</div>
+
+<input type="text" id="hidden-input" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+
+<div class="results-overlay" id="results">
+  <div class="results-card">
+    <div class="results-title">Results</div>
+    <div class="results-grid">
+      <div class="result-stat"><div class="label">Raw WPM</div><div class="value" id="res-raw">0</div></div>
+      <div class="result-stat"><div class="label">WPM</div><div class="value" id="res-wpm">0</div></div>
+      <div class="result-stat"><div class="label">Accuracy</div><div class="value" id="res-acc">0%</div></div>
+      <div class="result-stat"><div class="label">Consistency</div><div class="value" id="res-cons">0%</div></div>
+    </div>
+    <button class="restart-btn" onclick="restart()">Restart (Tab + Enter)</button>
+  </div>
+</div>
+
+<script>
+const WORDS = [
+  "the","be","to","of","and","a","in","that","have","i","it","for","not","on","with",
+  "he","as","you","do","at","this","but","his","by","from","they","we","say","her","she",
+  "or","an","will","my","one","all","would","there","their","what","so","up","out","if",
+  "about","who","get","which","go","me","when","make","can","like","time","no","just","him",
+  "know","take","people","into","year","your","good","some","could","them","see","other","than",
+  "then","now","look","only","come","its","over","think","also","back","after","use","two","how",
+  "our","work","first","well","way","even","new","want","because","any","these","give","day","most",
+  "us","great","world","life","hand","high","show","house","point","case","small","large","next",
+  "old","right","big","water","few","far","sound","same","down","here","move","five","need","begin",
+  "while","call","place","turn","really","leave","last","long","where","help","low","too","write",
+  "put","little","month","open","keep","let","form","serve","question","change","walk","wish","lead",
+  "play","run","stop","talk","watch","sit","set","learn","start","should","grow","stand","cut","reach",
+  "remain","carry","pull","break","fall","cross","fly","fight","touch","lose","meet","pay","catch",
+  "save","send","expect","build","stay","drop","pick","pass","decide","cover","cost","force","offer",
+  "increase","explain","report","develop","suggest","agree","spend","choose","continue","train","describe",
+  "complete","allow","compare","appear","consider","encourage","push","support","believe","accept","affect",
+  "prepare","remember","produce","manage","create","enter","identify","protect","reduce","return","share",
+  "sort","improve","test","collect","communicate","count","design","divide","earn","follow","introduce",
+  "listen","notice","plan","recognize","refuse","relax","replace","search","shape","sign","supply","surprise",
+  "travel","treat","wake","wonder","answer","apply","arrange","attack","avoid","borrow","brush","bump",
+  "burn","burst","clap","clear","clean","climb","close","combine","concentrate","connect","copy","cry",
+  "depend","destroy","dig","disagree","discover","discuss","draw","eat","end","enjoy","equal","escape",
+  "examine","exist","explore","express","fail","feel","fill","find","finish","fit","fix","float","fold",
+  "forget","garden","gather","glide","glow","grasp","grease","greet","guard","guess","guide","happen",
+  "hit","hold","hope","hurt","hurry","invent","join","kick","knock","land","laugh","lean","lend","lift",
+  "lock","love","mark","marry","measure","melt","mix","note","pack","paint","peel","perform","pinch",
+  "poll","pour","practice","press","print","race","raise","read","realize","receive","record","remove",
+  "repeat","reply","resist","rest","rush","satisfy","scare","score","scratch","scream","separate","settle",
+  "shake","sharpen","shine","shout","shrug","sigh","sing","sink","skate","skip","slam","sleep","slide",
+  "smile","smoke","snatch","snow","sneeze","spell","spoil","spread","spring","squeeze","struggle","study",
+  "stuff","suffer","suit","surround","swallow","sway","sweep","swing","switch","taste","teach","tell",
+  "thank","throw","tick","tie","trade","trick","trip","trust","twist","type","understand","wander","warm",
+  "wash","wave","wax","weigh","welcome","whistle","win","wipe","yawn","yell","zip"
+];
+
+// ── State ──────────────────────────────────────────────────
+let testWords        = [];
+let currentWordIndex = 0;
+let currentCharIndex = 0;
+let duration         = 30;
+let timeLeft         = 30;
+let timerInterval    = null;
+let testStarted      = false;
+let testEnded        = false;
+let totalKeystrokes  = 0;
+let correctKeystrokes= 0;
+let errors           = 0;
+let startTime        = null;
+let wpmHistory       = [];
+let keystrokeHistory = [];
+
+// ── DOM ────────────────────────────────────────────────────
+const wordsEl        = document.getElementById('words');
+const wrapperEl      = document.getElementById('words-wrapper');
+const caretEl        = document.getElementById('caret');
+const hiddenInput    = document.getElementById('hidden-input');
+const timerEl        = document.getElementById('timer');
+const liveWpm        = document.getElementById('live-wpm');
+const liveAcc        = document.getElementById('live-acc');
+const liveTime       = document.getElementById('live-time');
+const resultsOverlay = document.getElementById('results');
+
+// ── Words ──────────────────────────────────────────────────
+function generateWords(count) {
+  let arr = [];
+  for (let i = 0; i < count; i++) {
+    arr.push(WORDS[Math.floor(Math.random() * WORDS.length)]);
+  }
+  return arr;
+}
+
+function createWordSpan(word) {
+  const ws = document.createElement('span');
+  ws.className = 'word';
+  for (let ci = 0; ci < word.length; ci++) {
+    const cs = document.createElement('span');
+    cs.className = 'char pending';
+    cs.textContent = word[ci];
+    ws.appendChild(cs);
+  }
+  return ws;
+}
+
+function renderWords() {
+  wordsEl.innerHTML = '';
+  testWords.forEach(w => wordsEl.appendChild(createWordSpan(w)));
+}
+
+function appendMoreWords(count) {
+  const newWords = generateWords(count);
+  testWords.push(...newWords);
+  newWords.forEach(w => wordsEl.appendChild(createWordSpan(w)));
+}
+
+// ── Caret (FIXED: accurate on all lines) ──────────────────
+function positionCaret() {
+  if (testEnded) { caretEl.style.display = 'none'; return; }
+
+  const wordSpans  = wordsEl.querySelectorAll('.word');
+  const targetWord = wordSpans[currentWordIndex];
+  if (!targetWord) return;
+
+  const wrapperRect = wrapperEl.getBoundingClientRect();
+  let left, top, height;
+
+  if (currentCharIndex < targetWord.children.length) {
+    const charEl   = targetWord.children[currentCharIndex];
+    const charRect = charEl.getBoundingClientRect();
+    left   = charRect.left - wrapperRect.left;
+    top    = charRect.top  - wrapperRect.top;
+    height = charRect.height;
+  } else {
+    // Cursor is after the last character (waiting for space)
+    const lastChar = targetWord.children[targetWord.children.length - 1];
+    const lastRect = lastChar.getBoundingClientRect();
+    left   = lastRect.right - wrapperRect.left + 2;
+    top    = lastRect.top   - wrapperRect.top;
+    height = lastRect.height;
+  }
+
+  caretEl.style.left   = left + 'px';
+  caretEl.style.top    = top + 'px';
+  caretEl.style.height = height + 'px';
+  caretEl.style.display= 'block';
+}
+
+// ── Scroll (FIXED: no CSS transition to avoid desync) ─────
+function scrollWords() {
+  const wordSpans  = wordsEl.querySelectorAll('.word');
+  const targetWord = wordSpans[currentWordIndex];
+  if (!targetWord) return;
+
+  const wrapperH = wrapperEl.clientHeight;
+  // Center the current word vertically in the visible area
+  const offset = Math.max(0, targetWord.offsetTop - (wrapperH / 2 - 25));
+  wordsEl.style.transform = `translateY(-${offset}px)`;
+
+  // Reposition caret AFTER transform is applied
+  requestAnimationFrame(positionCaret);
+}
+
+// ── Timer ──────────────────────────────────────────────────
+function startTimer() {
+  if (timerInterval) return;
+  startTime = Date.now();
+  timerInterval = setInterval(() => {
+    const elapsed = Math.floor((Date.now() - startTime) / 1000);
+    timeLeft = duration - elapsed;
+
+    if (timeLeft <= 0) {
+      timeLeft = 0;
+      endTest();
+      return;
+    }
+
+    timerEl.textContent  = timeLeft;
+    liveTime.textContent = timeLeft;
+
+    const mins = elapsed / 60;
+    if (mins > 0) {
+      const wpm = Math.round((correctKeystrokes / 5) / mins);
+      liveWpm.textContent = wpm;
+      wpmHistory.push(wpm);
+    }
+
+    const acc = totalKeystrokes > 0
+      ? Math.round((correctKeystrokes / totalKeystrokes) * 100) : 100;
+    liveAcc.textContent = acc + '%';
+  }, 200);
+}
+
+// ── Input (FIXED: space handling restructured) ────────────
+hiddenInput.addEventListener('keydown', (e) => {
+  if (testEnded) return;
+
+  // BACKSPACE
+  if (e.key === 'Backspace') {
+    e.preventDefault();
+    if (!testStarted || keystrokeHistory.length === 0) return;
+
+    const last = keystrokeHistory.pop();
+    totalKeystrokes--;
+    if (last.correct) correctKeystrokes--;
+    else errors = Math.max(0, errors - 1);
+
+    // Move cursor back one position
+    if (currentCharIndex > 0) {
+      currentCharIndex--;
+    } else if (currentWordIndex > 0) {
+      currentWordIndex--;
+      currentCharIndex = testWords[currentWordIndex].length;
+    }
+
+    // Reset visual state
+    const wordSpans  = wordsEl.querySelectorAll('.word');
+    const targetWord = wordSpans[currentWordIndex];
+    if (targetWord && currentCharIndex < targetWord.children.length) {
+      targetWord.children[currentCharIndex].className = 'char pending';
+    }
+
+    scrollWords();
+    return;
+  }
+});
+
+hiddenInput.addEventListener('input', () => {
+  if (testEnded) return;
+
+  const char = hiddenInput.value[hiddenInput.value.length - 1];
+  hiddenInput.value = '';
+
+  // Start timer on first real keystroke
+  if (!testStarted && char !== ' ') {
+    testStarted = true;
+    startTimer();
+  }
+
+  const word = testWords[currentWordIndex];
+  const wordSpans  = wordsEl.querySelectorAll('.word');
+  const targetWord = wordSpans[currentWordIndex];
+
+  // ── KEY FIX: If we're already at the end of the word, ───
+  // ── the space just advances (no error, no comparison) ───
+  if (currentCharIndex >= word.length) {
+    if (char === ' ') {
+      // Clean space — advance to next word
+      currentWordIndex++;
+      currentCharIndex = 0;
+      if (currentWordIndex >= testWords.length) appendMoreWords(60);
+    } else {
+      // Typed a letter instead of space — count as error, advance
+      totalKeystrokes++;
+      errors++;
+      keystrokeHistory.push({ correct: false });
+      currentWordIndex++;
+      currentCharIndex = 0;
+      if (currentWordIndex >= testWords.length) appendMoreWords(60);
+    }
+    scrollWords();
+    return;
+  }
+
+  // ── Normal character comparison ──────────────────────────
+  totalKeystrokes++;
+  const expected = word[currentCharIndex];
+  let isCorrect  = (expected === char);
+
+  if (isCorrect) {
+    correctKeystrokes++;
+    targetWord.children[currentCharIndex].className = 'char correct';
+  } else {
+    errors++;
+    targetWord.children[currentCharIndex].className = 'char incorrect';
+  }
+
+  keystrokeHistory.push({ correct: isCorrect });
+  currentCharIndex++;
+
+  scrollWords();
+});
+
+// ── End test ───────────────────────────────────────────────
+function endTest() {
+  testEnded = true;
+  clearInterval(timerInterval);
+  timerInterval = null;
+  caretEl.style.display = 'none';
+
+  const elapsed = (Date.now() - startTime) / 1000;
+  const mins    = elapsed / 60;
+  const wpm     = mins > 0 ? Math.round((correctKeystrokes / 5) / mins) : 0;
+  const rawWpm  = mins > 0 ? Math.round((totalKeystrokes / 5) / mins) : 0;
+  const acc     = totalKeystrokes > 0
+    ? Math.round((correctKeystrokes / totalKeystrokes) * 100) : 100;
+
+  let cons = 0;
+  if (wpmHistory.length > 2) {
+    const avg = wpmHistory.reduce((a, b) => a + b, 0) / wpmHistory.length;
+    if (avg > 0) {
+      const variance = wpmHistory.reduce((s, v) => s + Math.pow(v - avg, 2), 0) / wpmHistory.length;
+      cons = Math.max(0, Math.round(100 - (Math.sqrt(variance) / avg * 100)));
+    }
+  }
+
+  document.getElementById('res-raw').textContent  = rawWpm;
+  document.getElementById('res-wpm').textContent  = wpm;
+  document.getElementById('res-acc').textContent  = acc + '%';
+  document.getElementById('res-cons').textContent = cons + '%';
+  resultsOverlay.classList.add('show');
+}
+
+// ── Restart ────────────────────────────────────────────────
+function restart() {
+  clearInterval(timerInterval);
+  timerInterval      = null;
+  testStarted        = false;
+  testEnded          = false;
+  currentWordIndex   = 0;
+  currentCharIndex   = 0;
+  totalKeystrokes    = 0;
+  correctKeystrokes  = 0;
+  errors             = 0;
+  wpmHistory         = [];
+  keystrokeHistory   = [];
+  timeLeft           = duration;
+
+  testWords = generateWords(80);
+  renderWords();
+
+  timerEl.textContent    = duration;
+  liveWpm.textContent    = '0';
+  liveAcc.textContent    = '100%';
+  liveTime.textContent   = duration;
+  resultsOverlay.classList.remove('show');
+  hiddenInput.value      = '';
+
+  requestAnimationFrame(() => {
+    scrollWords();
+  });
+
+  hiddenInput.focus();
+}
+
+// ── Duration ───────────────────────────────────────────────
+function setDuration(sec) {
+  duration = sec;
+  document.querySelectorAll('.config-btn').forEach(b => b.classList.remove('active'));
+  document.querySelector(`.config-btn[data-time="${sec}"]`).classList.add('active');
+  restart();
+}
+
+// ── Global keys ────────────────────────────────────────────
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Tab') e.preventDefault();
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') restart();
+  if (e.key === 'Escape') restart();
+
+  // Keep focus on hidden input
+  if (document.activeElement !== hiddenInput && !testEnded) {
+    hiddenInput.focus();
+  }
+});
+
+// ── Boot ───────────────────────────────────────────────────
+restart();
+window.addEventListener('resize', () => scrollWords());
+</script>
+</body>
+</html>
